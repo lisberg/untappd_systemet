@@ -50,3 +50,42 @@ def load_export(path: str | Path) -> list[CheckedInBeer]:
         if name:
             beers[(name.lower(), brewery.lower())] = CheckedInBeer(name, brewery)
     return list(beers.values())
+
+
+def fetch_user_beers(username: str, client_id=None, client_secret=None, access_token=None):
+    """Distinct beers a user has checked in, via the Untappd v4 API.
+
+    Needs credentials Untappd has approved for you (UNTAPPD_ACCESS_TOKEN, or
+    UNTAPPD_CLIENT_ID + UNTAPPD_CLIENT_SECRET). Endpoint/shape written from the docs
+    and wrappers; unverified here as untappd.com is unreachable from the build sandbox.
+    """
+    import os
+    import urllib.parse
+    import urllib.request
+
+    access_token = access_token or os.environ.get("UNTAPPD_ACCESS_TOKEN")
+    client_id = client_id or os.environ.get("UNTAPPD_CLIENT_ID")
+    client_secret = client_secret or os.environ.get("UNTAPPD_CLIENT_SECRET")
+    if access_token:
+        auth = {"access_token": access_token}
+    elif client_id and client_secret:
+        auth = {"client_id": client_id, "client_secret": client_secret}
+    else:
+        raise RuntimeError("Set UNTAPPD_ACCESS_TOKEN or UNTAPPD_CLIENT_ID/UNTAPPD_CLIENT_SECRET")
+    beers, offset = [], 0
+    while True:
+        qs = urllib.parse.urlencode({**auth, "limit": 50, "offset": offset})
+        req = urllib.request.Request(
+            f"https://api.untappd.com/v4/user/beers/{urllib.parse.quote(username)}?{qs}",
+            headers={"User-Agent": "beerbridge (untappd-systembolaget)"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.load(resp)["response"]["beers"]
+        items = body.get("items", [])
+        for it in items:
+            name = it["beer"]["beer_name"]
+            brewery = it.get("brewery", {}).get("brewery_name", "")
+            beers.append(CheckedInBeer(name, brewery))
+        if not items:
+            return beers
+        offset += len(items)

@@ -10,7 +10,7 @@ from beerbridge.untappd import load_export
 
 
 def P(name, producer):
-    return Product("1", name, producer, 30.0, 330, "Ale")
+    return Product("1", "1", name, producer, 30.0, 330, "Ale")
 
 
 class Tests(unittest.TestCase):
