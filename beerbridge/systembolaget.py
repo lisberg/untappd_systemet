@@ -24,13 +24,22 @@ def sb_command(binary: str, *args: str) -> list[str]:
     return shlex.split(binary, posix=os.name != "nt") + list(args)
 
 
+def launch_error(binary: str, exe: str, exc: OSError) -> RuntimeError:
+    if isinstance(exc, PermissionError):
+        why = (f"{exe!r} is a directory, not a program - point --sb-bin at the systembolaget file itself"
+               if os.path.isdir(exe) else
+               f"{exe!r} is not executable - try: chmod +x {exe}")
+        return RuntimeError(f"Could not run the systembolaget CLI (from --sb-bin {binary!r}): {why}.")
+    return RuntimeError(INSTALL_HINT.format(cmd=binary, exe=exe))
+
+
 def run_sb(binary: str, *args: str) -> str:
     """Run the CLI to completion and return stdout, with readable errors."""
     cmd = sb_command(binary, *args)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
-    except FileNotFoundError:
-        raise RuntimeError(INSTALL_HINT.format(cmd=binary, exe=cmd[0])) from None
+    except (FileNotFoundError, PermissionError) as e:
+        raise launch_error(binary, cmd[0], e) from None
     if proc.returncode:
         raise RuntimeError(f"{' '.join(cmd[:3])} failed ({proc.returncode}): {proc.stderr.strip()[-300:]}")
     return proc.stdout
@@ -66,8 +75,8 @@ def fetch_store_beers(store_id: str, binary: str = "systembolaget", page_delay: 
     cmd = sb_command(binary, "assortment", "--category", "Öl", "--store", store_id, "--page-delay", page_delay)
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8")
-    except FileNotFoundError:
-        raise RuntimeError(INSTALL_HINT.format(cmd=binary, exe=cmd[0])) from None
+    except (FileNotFoundError, PermissionError) as e:
+        raise launch_error(binary, cmd[0], e) from None
     with proc:
         for line in proc.stdout:
             if line.strip():
