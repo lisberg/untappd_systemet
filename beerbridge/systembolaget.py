@@ -12,7 +12,7 @@ import subprocess
 from dataclasses import dataclass
 
 INSTALL_HINT = (
-    "Could not run the systembolaget CLI ({cmd!r}). Install a release binary from "
+    "Could not run the systembolaget CLI: executable {exe!r} was not found (from --sb-bin {cmd!r}). Install a release binary from "
     "https://github.com/AlexGustafsson/systembolaget-api and put it on PATH, or pass --sb-bin "
     "(a path, or a full command such as: "
     "--sb-bin 'docker run --rm ghcr.io/alexgustafsson/systembolaget-api')."
@@ -30,7 +30,7 @@ def run_sb(binary: str, *args: str) -> str:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     except FileNotFoundError:
-        raise RuntimeError(INSTALL_HINT.format(cmd=binary)) from None
+        raise RuntimeError(INSTALL_HINT.format(cmd=binary, exe=cmd[0])) from None
     if proc.returncode:
         raise RuntimeError(f"{' '.join(cmd[:3])} failed ({proc.returncode}): {proc.stderr.strip()[-300:]}")
     return proc.stdout
@@ -67,7 +67,7 @@ def fetch_store_beers(store_id: str, binary: str = "systembolaget", page_delay: 
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8")
     except FileNotFoundError:
-        raise RuntimeError(INSTALL_HINT.format(cmd=binary)) from None
+        raise RuntimeError(INSTALL_HINT.format(cmd=binary, exe=cmd[0])) from None
     with proc:
         for line in proc.stdout:
             if line.strip():
