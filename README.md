@@ -12,6 +12,15 @@ python3 -m beerbridge export.csv --products-file saved_products.json    # offlin
 python3 -m unittest discover -s tests -t .
 ```
 
+## Web UI (phone-friendly)
+```
+python3 -m beerbridge.web --untappd-user myname                  # http://127.0.0.1:8000
+python3 -m beerbridge.web export.json --host 0.0.0.0 --port 8000  # open from your phone on the same Wi-Fi
+```
+Search for a store, tap it, then filter/sort the untried beers; "Only confirmed in stock" adds the per-beer stock
+check (slower). The chosen store is remembered in the browser, and each store's assortment is cached for an hour.
+Credentials stay on the server. There is no authentication, so only expose it on a network you trust.
+
 ## How it works
 1. **Untappd** - either your own data export (Account settings > Exportable Data; JSON/CSV), or the
    [Untappd v4 API](https://untappd.com/api/docs) (`--untappd-user`, needs `UNTAPPD_ACCESS_TOKEN` or
@@ -26,5 +35,6 @@ python3 -m unittest discover -s tests -t .
 - Neither live service could be reached from the build sandbox. The `systembolaget` CLI path is tested only against a
   stand-in script emitting the documented JSON shapes; the Untappd API call is unverified. Product JSON keys
   (`productNumber`, `productId`, `producerName`, ...) may need small tweaks in `systembolaget.py` on first real run.
+- The store-search response keys (`siteId`, `alias`, `city`) are guesses, same as the product keys; the UI tolerates a few variants.
 - `--check-stock` makes one call per untried beer; run it without first to see the (larger) assortment list.
 - Fuzzy matching will produce some false positives/negatives; tune `--threshold`.

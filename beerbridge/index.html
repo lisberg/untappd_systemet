@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Untried at Systembolaget</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1b1b1b;--mut:#6b6b6b;--line:#ddd;--acc:#b45309}
+@media(prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--mut:#9a9a9a;--line:#333;--acc:#f59e0b}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.2rem;margin:0 0 12px}
+input,button,select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+input[type=search]{width:100%;box-sizing:border-box}
+button{cursor:pointer}.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center}
+ul{list-style:none;padding:0;margin:8px 0}
+li{padding:10px 0;border-bottom:1px solid var(--line)}
+.store{display:block;width:100%;text-align:left;margin:4px 0}
+.mut{color:var(--mut);font-size:.9rem}.p{color:var(--acc);white-space:nowrap}
+.b{display:flex;justify-content:space-between;gap:8px}
+</style></head><body><main>
+<h1>Beers you haven't checked in</h1>
+<div id="storebar" class="row"><strong id="cur">No store chosen</strong><button id="change">Change store</button></div>
+<div id="picker" hidden>
+  <input id="sq" type="search" placeholder="Search store (city or name)…" autocomplete="off">
+  <div id="slist"></div>
+</div>
+<div id="tools" hidden>
+  <div class="row">
+    <input id="f" type="search" placeholder="Filter…" style="flex:1;min-width:8rem">
+    <select id="sort"><option value="producer">Brewery</option><option value="style">Style</option><option value="price">Price</option></select>
+  </div>
+  <label class="row"><input type="checkbox" id="stock"> Only confirmed in stock (slower)</label>
+</div>
+<div id="status" class="mut"></div>
+<ul id="list"></ul>
+<script>
+const $=id=>document.getElementById(id);
+const get=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const set=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+let beers=[],store=get('store'),storeName=get('storeName')||'';
+async function api(u){const r=await fetch(u),j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j}
+function render(){
+  const f=$('f').value.toLowerCase(),k=$('sort').value;
+  const v=beers.filter(b=>(b.producer+' '+b.name+' '+b.style).toLowerCase().includes(f))
+    .sort((a,b)=>k==='price'?(a.price||1e9)-(b.price||1e9):String(a[k]).localeCompare(b[k],'sv'));
+  $('list').innerHTML=v.map(b=>`<li><div class="b"><span><strong></strong> <span class="n"></span></span><span class="p">${b.price?Math.round(b.price)+' kr':''}</span></div><div class="mut"></div></li>`).join('');
+  [...$('list').children].forEach((li,i)=>{const b=v[i];
+    li.querySelector('strong').textContent=b.producer;li.querySelector('.n').textContent=b.name;
+    li.querySelector('.mut').textContent=[b.style,b.volume&&b.volume+' ml','#'+b.number].filter(Boolean).join(' · ')});
+  $('status').textContent=`${v.length} of ${beers.length} untried beers`;
+}
+async function load(){
+  if(!store)return;
+  $('cur').textContent=storeName||store;$('tools').hidden=false;$('picker').hidden=true;
+  $('status').textContent='Loading… (first load of a store can take a minute)';$('list').innerHTML='';
+  try{const j=await api(`/api/untried?store=${store}&stock=${$('stock').checked?1:0}`);beers=j.beers;render()}
+  catch(e){$('status').textContent='Error: '+e.message}
+}
+$('change').onclick=()=>{$('picker').hidden=false;$('sq').focus()};
+let t;$('sq').oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{
+  const q=$('sq').value.trim();if(q.length<2)return;
+  try{const s=await api('/api/stores?q='+encodeURIComponent(q));
+    $('slist').innerHTML='';s.forEach(x=>{const b=document.createElement('button');b.className='store';
+      b.textContent=`${x.name}${x.city?' – '+x.city:''}`;
+      b.onclick=()=>{store=x.id;storeName=b.textContent;set('store',store);set('storeName',storeName);load()};
+      $('slist').append(b)})}catch(e){$('slist').textContent='Error: '+e.message}},300)};
+$('f').oninput=$('sort').onchange=render;$('stock').onchange=load;
+store?load():$('picker').hidden=false;
+</script></main></body></html>
