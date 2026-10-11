@@ -16,15 +16,16 @@ from urllib.parse import parse_qs, urlparse
 
 from .cli import unchecked
 from .systembolaget import fetch_store_beers, run_sb, store_stock
-from .untappd import fetch_user_beers, load_export, save_cache
+from .ratings import RatingStore
+from .untappd import UntappdClient, fetch_user_beers, load_export, save_cache
 
 ASSORTMENT_TTL = 3600
 PAGE = Path(__file__).with_name("index.html")
 
 
 class App:
-    def __init__(self, checked, sb_bin, threshold):
-        self.checked, self.sb_bin, self.threshold = checked, sb_bin, threshold
+    def __init__(self, checked, sb_bin, threshold, ratings=None):
+        self.checked, self.sb_bin, self.threshold, self.ratings = checked, sb_bin, threshold, ratings
         self._assortment = {}  # store -> (time, products)
         self._lock = threading.Lock()
 
@@ -45,6 +46,10 @@ class App:
                 self._assortment[store] = hit
             return hit[1]
 
+    def queue_ratings(self, store, numbers):
+        wanted = set(numbers)
+        self.ratings.enqueue([p for p in self.products(store) if p.number in wanted])
+
     def untried(self, store, check_stock):
         todo = unchecked(self.products(store), self.checked, self.threshold)
         if check_stock:
@@ -52,7 +57,7 @@ class App:
                 stock = list(pool.map(lambda t: store_stock(store, t[0].product_id, self.sb_bin), todo))
             todo = [x for x, s in zip(todo, stock) if s > 0]
         return [{"producer": p.producer, "name": p.name, "style": p.style, "price": p.price,
-                 "volume": p.volume_ml, "number": p.number,
+                 "volume": p.volume_ml, "number": p.number, "abv": p.abv,
                  "closest": f"{who.brewery} - {who.name}" if who else "", "score": round(n, 2)}
                 for p, n, who in todo]
 
@@ -75,12 +80,30 @@ def make_handler(app):
                     self._send(200, PAGE.read_bytes(), "text/html")
                 elif u.path == "/api/stores":
                     self._send(200, app.stores(q.get("q", "")))
+                elif u.path == "/api/ratings":
+                    self._send(200, app.ratings.snapshot() if app.ratings else
+                               {"ratings": {}, "status": {"enabled": False}})
                 elif u.path == "/api/untried" and q.get("store", "").isalnum():
                     self._send(200, {"checked": len(app.checked),
                                      "beers": app.untried(q["store"], q.get("stock") == "1")})
                 else:
                     self._send(404, {"error": "not found"})
             except Exception as e:  # surface CLI/API failures to the page
+                self._send(502, {"error": str(e)})
+
+        def do_POST(self):
+            u = urlparse(self.path)
+            try:
+                if u.path == "/api/ratings/queue" and app.ratings:
+                    body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                    store = str(body.get("store", ""))
+                    if not store.isalnum():
+                        return self._send(400, {"error": "bad store"})
+                    app.queue_ratings(store, [str(n) for n in body.get("numbers", [])][:500])
+                    self._send(200, app.ratings.snapshot()["status"])
+                else:
+                    self._send(404, {"error": "not found"})
+            except Exception as e:
                 self._send(502, {"error": str(e)})
 
         def log_message(self, *a):
@@ -96,6 +119,8 @@ def main(argv=None):
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--sb-bin", default="systembolaget")
     ap.add_argument("--threshold", type=float, default=0.8)
+    ap.add_argument("--ratings-cache", default=".ratings-cache.json")
+    ap.add_argument("--no-ratings", action="store_true", help="Don't fetch Untappd ratings")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     a = ap.parse_args(argv)
@@ -108,8 +133,14 @@ def main(argv=None):
     else:
         checked = fetch_user_beers(a.untappd_user)
         save_cache(a.untappd_cache, checked)
+    ratings = None
+    if not a.no_ratings:
+        try:
+            ratings = RatingStore(UntappdClient(), a.ratings_cache)
+        except RuntimeError as e:
+            print(f"Ratings disabled: {e}")
     print(f"{len(checked)} check-ins loaded; serving on http://{a.host}:{a.port}")
-    ThreadingHTTPServer((a.host, a.port), make_handler(App(checked, a.sb_bin, a.threshold))).serve_forever()
+    ThreadingHTTPServer((a.host, a.port), make_handler(App(checked, a.sb_bin, a.threshold, ratings))).serve_forever()
 
 
 if __name__ == "__main__":

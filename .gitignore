@@ -1,2 +1,3 @@
 __pycache__/
 .untappd-cache.json
+.ratings-cache.json

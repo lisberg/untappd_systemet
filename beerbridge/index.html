@@ -3,66 +3,147 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Untried at Systembolaget</title>
 <style>
-:root{color-scheme:light dark;--bg:#fff;--fg:#1b1b1b;--mut:#6b6b6b;--line:#ddd;--acc:#b45309}
-@media(prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--mut:#9a9a9a;--line:#333;--acc:#f59e0b}}
+:root{color-scheme:light dark;--bg:#fff;--fg:#1b1b1b;--mut:#6b6b6b;--line:#ddd;--acc:#b45309;--chip:#f3f3f3}
+@media(prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--mut:#9a9a9a;--line:#333;--acc:#f59e0b;--chip:#262626}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif}
-main{max-width:640px;margin:0 auto;padding:16px}
+main{max-width:720px;margin:0 auto;padding:16px}
 h1{font-size:1.2rem;margin:0 0 12px}
-input,button,select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+h2{font-size:1rem;margin:20px 0 4px;padding-bottom:4px;border-bottom:2px solid var(--line);position:sticky;top:0;background:var(--bg)}
+input,button,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
 input[type=search]{width:100%;box-sizing:border-box}
+input[type=number]{width:5.2rem}
 button{cursor:pointer}.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center}
-ul{list-style:none;padding:0;margin:8px 0}
+label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:2px}
+details{margin:8px 0}summary{cursor:pointer;color:var(--mut)}
+ul{list-style:none;padding:0;margin:0}
 li{padding:10px 0;border-bottom:1px solid var(--line)}
 .store{display:block;width:100%;text-align:left;margin:4px 0}
-.mut{color:var(--mut);font-size:.9rem}.p{color:var(--acc);white-space:nowrap}
+.mut{color:var(--mut);font-size:.88rem}.p{color:var(--acc);white-space:nowrap}
 .b{display:flex;justify-content:space-between;gap:8px}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:1px 8px;margin-right:6px;font-size:.85rem;white-space:nowrap}
+.warn{color:var(--acc);font-size:.9rem}
 </style></head><body><main>
 <h1>Beers you haven't checked in</h1>
-<div id="storebar" class="row"><strong id="cur">No store chosen</strong><button id="change">Change store</button></div>
+<div class="row"><strong id="cur">No store chosen</strong><button id="change">Change store</button></div>
 <div id="picker" hidden>
   <input id="sq" type="search" placeholder="Search store (city or name)…" autocomplete="off">
   <div id="slist"></div>
 </div>
 <div id="tools" hidden>
+  <input id="f" type="search" placeholder="Search brewery, beer or style…">
   <div class="row">
-    <input id="f" type="search" placeholder="Filter…" style="flex:1;min-width:8rem">
-    <select id="sort"><option value="producer">Brewery</option><option value="style">Style</option><option value="price">Price</option></select>
+    <label>Sort by<select id="sort">
+      <option value="producer">Brewery</option><option value="name">Beer</option><option value="style">Style</option>
+      <option value="price">Price</option><option value="abv">ABV</option>
+      <option value="score">Rating (Untappd)</option><option value="friends">Rating (friends)</option></select></label>
+    <label>Order<select id="dir"><option value="1">Ascending</option><option value="-1">Descending</option></select></label>
+    <label>Group by<select id="group"><option value="">None</option><option value="style">Style</option>
+      <option value="producer">Brewery</option><option value="price">Price band</option></select></label>
   </div>
-  <label class="row"><input type="checkbox" id="stock"> Only confirmed in stock (slower)</label>
+  <details id="flt"><summary>Filters</summary>
+    <div class="row">
+      <label>Style<select id="style"><option value="">All</option></select></label>
+      <label>Min price<input id="pmin" type="number" min="0" step="1"></label>
+      <label>Max price<input id="pmax" type="number" min="0" step="1"></label>
+      <label>Min ABV %<input id="amin" type="number" min="0" step="0.1"></label>
+      <label>Max ABV %<input id="amax" type="number" min="0" step="0.1"></label>
+      <label>Min rating<input id="rmin" type="number" min="0" max="5" step="0.1"></label>
+    </div>
+    <label class="row" style="flex-direction:row"><input type="checkbox" id="stock"> Only confirmed in stock (slower)</label>
+  </details>
+  <div class="row"><button id="getr">Fetch ratings for shown beers</button><span id="rstat" class="mut"></span></div>
 </div>
 <div id="status" class="mut"></div>
-<ul id="list"></ul>
+<div id="out"></div>
 <script>
 const $=id=>document.getElementById(id);
 const get=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const set=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-let beers=[],store=get('store'),storeName=get('storeName')||'';
-async function api(u){const r=await fetch(u),j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j}
+let beers=[],ratings={},rst={},store=get('store'),storeName=get('storeName')||'',poll=null;
+const CTL=['f','sort','dir','group','style','pmin','pmax','amin','amax','rmin'];
+CTL.forEach(id=>{const v=get('ctl_'+id);if(v!==null&&$(id).tagName!=='SELECT')$(id).value=v;else if(v!==null)$(id).dataset.want=v});
+async function api(u,opt){const r=await fetch(u,opt),j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j}
+const num=id=>{const v=parseFloat($(id).value);return isNaN(v)?null:v};
+const fmtN=n=>n>=1000?(n/1000).toFixed(1)+'k':String(n||0);
+function view(){
+  const f=$('f').value.toLowerCase(),st=$('style').value,
+    pmin=num('pmin'),pmax=num('pmax'),amin=num('amin'),amax=num('amax'),rmin=num('rmin');
+  let v=beers.filter(b=>{const r=ratings[b.number]||{};
+    return (b.producer+' '+b.name+' '+b.style).toLowerCase().includes(f)&&(!st||b.style===st)
+     &&(pmin===null||(b.price||0)>=pmin)&&(pmax===null||(b.price||0)<=pmax)
+     &&(amin===null||(b.abv||0)>=amin)&&(amax===null||(b.abv||0)<=amax)
+     &&(rmin===null||(r.score||0)>=rmin)});
+  const k=$('sort').value,d=+$('dir').value;
+  const key=b=>{const r=ratings[b.number]||{};return k==='score'?r.score:k==='friends'?r.friends:b[k]};
+  v.sort((a,b)=>{const x=key(a),y=key(b);
+    if(x==null||x==='')return y==null||y===''?0:1;if(y==null||y==='')return -1;  // missing values last
+    return d*(typeof x==='number'?x-y:String(x).localeCompare(String(y),'sv'))});
+  return v}
+function band(p){if(p==null)return 'Unknown price';return p<30?'Under 30 kr':p<50?'30–49 kr':p<80?'50–79 kr':p<120?'80–119 kr':'120 kr and up'}
+function item(b){
+  const li=document.createElement('li'),r=ratings[b.number];
+  const top=document.createElement('div');top.className='b';
+  const l=document.createElement('span'),s=document.createElement('strong');s.textContent=b.producer;
+  l.append(s,' '+b.name);const p=document.createElement('span');p.className='p';p.textContent=b.price?Math.round(b.price)+' kr':'';
+  top.append(l,p);li.append(top);
+  const m=document.createElement('div');m.className='mut';
+  m.textContent=[b.style,b.abv!=null&&b.abv+'%',b.volume&&b.volume+' ml','#'+b.number].filter(Boolean).join(' · ');li.append(m);
+  const rr=document.createElement('div');
+  const chip=t=>{const c=document.createElement('span');c.className='chip';c.textContent=t;rr.append(c)};
+  if(r&&r.found&&r.score)chip(`★ ${(+r.score).toFixed(2)} (${fmtN(r.count)})`);
+  if(r&&r.friends)chip(`👥 ${r.friends.toFixed(2)} (${r.friends_count})`);
+  if(r&&r.found===false)chip('no Untappd match');
+  if(rr.children.length)li.append(rr);
+  if(b.closest){const c=document.createElement('div');c.className='mut';c.textContent=`closest check-in: ${b.closest} (${b.score})`;li.append(c)}
+  return li}
 function render(){
-  const f=$('f').value.toLowerCase(),k=$('sort').value;
-  const v=beers.filter(b=>(b.producer+' '+b.name+' '+b.style).toLowerCase().includes(f))
-    .sort((a,b)=>k==='price'?(a.price||1e9)-(b.price||1e9):String(a[k]).localeCompare(b[k],'sv'));
-  $('list').innerHTML=v.map(b=>`<li><div class="b"><span><strong></strong> <span class="n"></span></span><span class="p">${b.price?Math.round(b.price)+' kr':''}</span></div><div class="mut"></div></li>`).join('');
-  [...$('list').children].forEach((li,i)=>{const b=v[i];
-    li.querySelector('strong').textContent=b.producer;li.querySelector('.n').textContent=b.name;
-    li.querySelector('.mut').textContent=[b.style,b.volume&&b.volume+' ml','#'+b.number].filter(Boolean).join(' · ')+(b.closest?`  —  closest check-in: ${b.closest} (${b.score})`:'')});
+  const v=view(),g=$('group').value,out=$('out');out.textContent='';
+  const groups=new Map();
+  v.forEach(b=>{const key=!g?'':g==='price'?band(b.price):(b[g]||'—');(groups.get(key)||groups.set(key,[]).get(key)).push(b)});
+  let keys=[...groups.keys()];
+  if(g==='price'){const o=['Under 30 kr','30–49 kr','50–79 kr','80–119 kr','120 kr and up','Unknown price'];keys.sort((a,b)=>o.indexOf(a)-o.indexOf(b))}
+  else if(g)keys.sort((a,b)=>a.localeCompare(b,'sv'));
+  keys.forEach(key=>{
+    if(g){const h=document.createElement('h2');h.textContent=`${key} (${groups.get(key).length})`;out.append(h)}
+    const ul=document.createElement('ul');groups.get(key).forEach(b=>ul.append(item(b)));out.append(ul)});
   $('status').textContent=`${v.length} of ${beers.length} untried beers`;
+  CTL.forEach(id=>set('ctl_'+id,$(id).value));
+  const n=v.filter(b=>!ratings[b.number]).length;
+  $('getr').textContent=`Fetch ratings for ${n} shown beer${n===1?'':'s'}`;$('getr').disabled=!n||rst.enabled===false;
 }
+function fillStyles(){
+  const sel=$('style'),want=sel.dataset.want||sel.value;
+  sel.length=1;[...new Set(beers.map(b=>b.style).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'sv'))
+    .forEach(s=>sel.add(new Option(s,s)));sel.value=want;
+  ['sort','dir','group'].forEach(id=>{const w=$(id).dataset.want;if(w!==undefined)$(id).value=w})}
+async function refreshRatings(){
+  try{const j=await api('/api/ratings');ratings=j.ratings;rst=j.status;
+    const s=[];if(rst.enabled===false)s.push('Ratings off (no Untappd credentials)');
+    else{if(rst.pending)s.push(`fetching… ${rst.pending} queued`);
+      if(rst.paused)s.push(rst.paused);
+      if(rst.remaining!=null)s.push(`${rst.remaining} API calls left this hour`);
+      if(!rst.friends_possible)s.push("friends' ratings need UNTAPPD_ACCESS_TOKEN")}
+    $('rstat').textContent=s.join(' · ');render();
+    if(rst.pending&&!rst.paused){clearTimeout(poll);poll=setTimeout(refreshRatings,4000)}}catch(e){$('rstat').textContent='Error: '+e.message}}
+$('getr').onclick=async()=>{
+  const nums=view().filter(b=>!ratings[b.number]).map(b=>b.number);
+  try{await api('/api/ratings/queue',{method:'POST',body:JSON.stringify({store,numbers:nums})});refreshRatings()}
+  catch(e){$('rstat').textContent='Error: '+e.message}};
 async function load(){
   if(!store)return;
   $('cur').textContent=storeName||store;$('tools').hidden=false;$('picker').hidden=true;
-  $('status').textContent='Loading… (first load of a store can take a minute)';$('list').innerHTML='';
-  try{const j=await api(`/api/untried?store=${store}&stock=${$('stock').checked?1:0}`);beers=j.beers;render()}
+  $('status').textContent='Loading… (first load of a store can take a minute)';$('out').textContent='';
+  try{const j=await api(`/api/untried?store=${store}&stock=${$('stock').checked?1:0}`);beers=j.beers;fillStyles();await refreshRatings();render()}
   catch(e){$('status').textContent='Error: '+e.message}
 }
 $('change').onclick=()=>{$('picker').hidden=false;$('sq').focus()};
 let t;$('sq').oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{
   const q=$('sq').value.trim();if(q.length<2)return;
   try{const s=await api('/api/stores?q='+encodeURIComponent(q));
-    $('slist').innerHTML='';s.forEach(x=>{const b=document.createElement('button');b.className='store';
+    $('slist').textContent='';s.forEach(x=>{const b=document.createElement('button');b.className='store';
       b.textContent=`${x.name}${x.city?' – '+x.city:''}`;
       b.onclick=()=>{store=x.id;storeName=b.textContent;set('store',store);set('storeName',storeName);load()};
       $('slist').append(b)})}catch(e){$('slist').textContent='Error: '+e.message}},300)};
-$('f').oninput=$('sort').onchange=render;$('stock').onchange=load;
+CTL.forEach(id=>{$(id).oninput=$(id).onchange=render});$('stock').onchange=load;
 store?load():$('picker').hidden=false;
 </script></main></body></html>

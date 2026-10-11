@@ -53,6 +53,7 @@ class Product:
     price: float | None
     volume_ml: int | None
     style: str
+    abv: float | None = None
 
 
 def _to_product(p: dict) -> Product:
@@ -67,6 +68,7 @@ def _to_product(p: dict) -> Product:
         style=" / ".join(
             x for x in (p.get("categoryLevel2"), p.get("categoryLevel3")) if x
         ),
+        abv=p.get("alcoholPercentage"),
     )
 
 
