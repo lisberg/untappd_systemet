@@ -45,7 +45,7 @@ function render(){
   $('list').innerHTML=v.map(b=>`<li><div class="b"><span><strong></strong> <span class="n"></span></span><span class="p">${b.price?Math.round(b.price)+' kr':''}</span></div><div class="mut"></div></li>`).join('');
   [...$('list').children].forEach((li,i)=>{const b=v[i];
     li.querySelector('strong').textContent=b.producer;li.querySelector('.n').textContent=b.name;
-    li.querySelector('.mut').textContent=[b.style,b.volume&&b.volume+' ml','#'+b.number].filter(Boolean).join(' · ')});
+    li.querySelector('.mut').textContent=[b.style,b.volume&&b.volume+' ml','#'+b.number].filter(Boolean).join(' · ')+(b.closest?`  —  closest check-in: ${b.closest} (${b.score})`:'')});
   $('status').textContent=`${v.length} of ${beers.length} untried beers`;
 }
 async function load(){

@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from .match import score
+from .match import Matcher
 from .systembolaget import fetch_store_beers, load_products_file, store_stock
 from pathlib import Path
 
@@ -9,12 +9,13 @@ from .untappd import fetch_user_beers, load_export, save_cache
 
 
 def unchecked(products, checked, threshold=0.8):
-    """Products with no sufficiently similar beer in the check-in history."""
+    """(product, best score, closest check-in) for products with no sufficiently similar check-in."""
+    matcher = Matcher(checked)
     out = []
     for p in products:
-        best = max((score(c.name, c.brewery, p.name, p.producer) for c in checked), default=0)
+        best, who = matcher.best(p)
         if best < threshold:
-            out.append((p, best))
+            out.append((p, best, who))
     return out
 
 
@@ -30,6 +31,8 @@ def main(argv=None):
                     help="Also confirm shelf stock in the store (one extra call per untried beer)")
     ap.add_argument("--store", help="Systembolaget store id (siteId), e.g. 0102")
     ap.add_argument("--products-file", help="Use a saved product list instead of the live API")
+    ap.add_argument("--explain", action="store_true",
+                    help="Show each beer's closest check-in and match score (for tuning --threshold)")
     ap.add_argument("--threshold", type=float, default=0.8,
                     help="Match score at/above which a beer counts as checked in (default 0.8)")
     args = ap.parse_args(argv)
@@ -51,12 +54,15 @@ def main(argv=None):
                 else list(fetch_store_beers(args.store, args.sb_bin)))
     todo = unchecked(products, checked, args.threshold)
     if args.check_stock:
-        todo = [(p, n) for p, n in todo if store_stock(args.store, p.product_id, args.sb_bin) > 0]
+        todo = [t for t in todo if store_stock(args.store, t[0].product_id, args.sb_bin) > 0]
     print(f"{len(products)} beers in store, {len(checked)} check-ins, {len(todo)} not yet tried\n",
           file=sys.stderr)
-    for p, near in sorted(todo, key=lambda t: (t[0].style, t[0].producer, t[0].name)):
+    for p, near, who in sorted(todo, key=lambda t: (t[0].style, t[0].producer, t[0].name)):
         price = f"{p.price:.0f} kr" if p.price else "-"
-        print(f"{p.producer} - {p.name} | {p.style} | {price} | #{p.number}")
+        line = f"{p.producer} - {p.name} | {p.style} | {price} | #{p.number}"
+        if args.explain:
+            line += f"   [closest: {who.brewery} - {who.name} ({near:.2f})]" if who else "   [no similar check-in]"
+        print(line)
 
 
 if __name__ == "__main__":

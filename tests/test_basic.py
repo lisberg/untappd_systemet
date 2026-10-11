@@ -26,7 +26,15 @@ class Tests(unittest.TestCase):
         (tmp / "e.csv").write_text("beer_name,brewery_name\nFatamorgana,Omnipollo\n")
         checked = load_export(tmp / "e.csv")
         res = unchecked([P("Fatamorgana", "Omnipollo"), P("Nebuchadnezzar", "Omnipollo")], checked)
-        self.assertEqual([p.name for p, _ in res], ["Nebuchadnezzar"])
+        self.assertEqual([p.name for p, _, _ in res], ["Nebuchadnezzar"])
+
+    def test_real_world_naming_differences(self):
+        # brewery in the bold field, extra style words, years, bottler as producer
+        self.assertGreater(score("Fatamorgana Imperial IPA (2021)", "Omnipollo", "Fatamorgana", "Omnipollo"), 0.8)
+        self.assertGreater(score("Omnipollo Fatamorgana", "Omnipollo", "Omnipollo Fatamorgana", "Omnipollo Bryggeri AB"), 0.9)
+        self.assertGreater(score("Beer Geek Brunch Weasel", "Mikkeller", "Beer Geek Brunch Weasel", "Mikkeller ApS"), 0.9)
+        self.assertGreater(score("Beer Geek Brunch Weasel", "Mikkeller", "Beer Geek Brunch Weasel", "Some Importer"), 0.7)
+        self.assertLess(score("Hazy IPA", "Omnipollo", "Pale IPA", "Omnipollo"), 0.8)
 
     def test_json_export_and_products_file(self):
         tmp = Path(tempfile.mkdtemp())

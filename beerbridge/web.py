@@ -50,9 +50,11 @@ class App:
         if check_stock:
             with ThreadPoolExecutor(4) as pool:
                 stock = list(pool.map(lambda t: store_stock(store, t[0].product_id, self.sb_bin), todo))
-            todo = [(p, n) for (p, n), s in zip(todo, stock) if s > 0]
+            todo = [x for x, s in zip(todo, stock) if s > 0]
         return [{"producer": p.producer, "name": p.name, "style": p.style, "price": p.price,
-                 "volume": p.volume_ml, "number": p.number} for p, _ in todo]
+                 "volume": p.volume_ml, "number": p.number,
+                 "closest": f"{who.brewery} - {who.name}" if who else "", "score": round(n, 2)}
+                for p, n, who in todo]
 
 
 def make_handler(app):
