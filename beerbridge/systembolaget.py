@@ -6,8 +6,34 @@ Install a release binary from https://github.com/AlexGustafsson/systembolaget-ap
 {productId, storeId, shelf, stock, isInStoreAssortment}.
 """
 import json
+import os
+import shlex
 import subprocess
 from dataclasses import dataclass
+
+INSTALL_HINT = (
+    "Could not run the systembolaget CLI ({cmd!r}). Install a release binary from "
+    "https://github.com/AlexGustafsson/systembolaget-api and put it on PATH, or pass --sb-bin "
+    "(a path, or a full command such as: "
+    "--sb-bin 'docker run --rm ghcr.io/alexgustafsson/systembolaget-api')."
+)
+
+
+def sb_command(binary: str, *args: str) -> list[str]:
+    """`binary` may be a path or a multi-word command (e.g. a docker run line)."""
+    return shlex.split(binary, posix=os.name != "nt") + list(args)
+
+
+def run_sb(binary: str, *args: str) -> str:
+    """Run the CLI to completion and return stdout, with readable errors."""
+    cmd = sb_command(binary, *args)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    except FileNotFoundError:
+        raise RuntimeError(INSTALL_HINT.format(cmd=binary)) from None
+    if proc.returncode:
+        raise RuntimeError(f"{' '.join(cmd[:3])} failed ({proc.returncode}): {proc.stderr.strip()[-300:]}")
+    return proc.stdout
 
 @dataclass(frozen=True)
 class Product:
@@ -37,8 +63,12 @@ def _to_product(p: dict) -> Product:
 
 def fetch_store_beers(store_id: str, binary: str = "systembolaget", page_delay: str = "250ms"):
     """Yield every beer in the store's assortment (streams the CLI's JSONL output)."""
-    cmd = [binary, "assortment", "--category", "Öl", "--store", store_id, "--page-delay", page_delay]
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8") as proc:
+    cmd = sb_command(binary, "assortment", "--category", "Öl", "--store", store_id, "--page-delay", page_delay)
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, encoding="utf-8")
+    except FileNotFoundError:
+        raise RuntimeError(INSTALL_HINT.format(cmd=binary)) from None
+    with proc:
         for line in proc.stdout:
             if line.strip():
                 yield _to_product(json.loads(line))
@@ -48,10 +78,7 @@ def fetch_store_beers(store_id: str, binary: str = "systembolaget", page_delay: 
 
 def store_stock(store_id: str, product_id: str, binary: str = "systembolaget") -> int:
     """Units on the shelf in the store (0 if not stocked)."""
-    out = subprocess.run(
-        [binary, "stock", "--store-id", store_id, "--product-id", product_id],
-        capture_output=True, text=True, encoding="utf-8", check=True,
-    ).stdout
+    out = run_sb(binary, "stock", "--store-id", store_id, "--product-id", product_id)
     data = json.loads(out)
     if isinstance(data, list):
         data = data[0] if data else {}

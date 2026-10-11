@@ -3,8 +3,9 @@
 Lists the beers stocked in a given Systembolaget store that you have **not** yet checked in on Untappd.
 
 ```
-# one-time: download a `systembolaget` release binary from
-# https://github.com/AlexGustafsson/systembolaget-api and put it on PATH (or use --sb-bin)
+# one-time: either download a `systembolaget` release binary from
+# https://github.com/AlexGustafsson/systembolaget-api and put it on PATH (or use --sb-bin), or run it via Docker:
+#   --sb-bin 'docker run --rm ghcr.io/alexgustafsson/systembolaget-api'
 
 python3 -m beerbridge my_untappd_export.json --store 0102              # export file
 python3 -m beerbridge --untappd-user myname --store 0102 --check-stock  # Untappd API + shelf stock

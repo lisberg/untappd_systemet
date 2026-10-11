@@ -7,7 +7,6 @@ There is no authentication; only expose it on a network you trust.
 """
 import argparse
 import json
-import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .cli import unchecked
-from .systembolaget import fetch_store_beers, store_stock
+from .systembolaget import fetch_store_beers, run_sb, store_stock
 from .untappd import fetch_user_beers, load_export, save_cache
 
 ASSORTMENT_TTL = 3600
@@ -30,8 +29,7 @@ class App:
         self._lock = threading.Lock()
 
     def stores(self, query):
-        out = subprocess.run([self.sb_bin, "stores", "--search", query], capture_output=True,
-                             text=True, encoding="utf-8", check=True).stdout.strip()
+        out = run_sb(self.sb_bin, "stores", "--search", query).strip()
         rows = json.loads(out) if out.startswith("[") else [json.loads(l) for l in out.splitlines() if l.strip()]
         return [{
             "id": str(r.get("siteId") or r.get("storeId") or r.get("id") or ""),
