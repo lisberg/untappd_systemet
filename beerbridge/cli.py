@@ -3,7 +3,9 @@ import sys
 
 from .match import score
 from .systembolaget import fetch_store_beers, load_products_file, store_stock
-from .untappd import fetch_user_beers, load_export
+from pathlib import Path
+
+from .untappd import fetch_user_beers, load_export, save_cache
 
 
 def unchecked(products, checked, threshold=0.8):
@@ -20,6 +22,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("export", nargs="?", help="Untappd export file (.json or .csv)")
     ap.add_argument("--untappd-user", help="Fetch check-ins via the Untappd API instead of an export file")
+    ap.add_argument("--untappd-cache", default=".untappd-cache.json",
+                    help="Where to cache API results (default .untappd-cache.json)")
+    ap.add_argument("--refresh", action="store_true", help="Ignore the cache and re-fetch from Untappd")
     ap.add_argument("--sb-bin", default="systembolaget", help="Path to the systembolaget-api CLI")
     ap.add_argument("--check-stock", action="store_true",
                     help="Also confirm shelf stock in the store (one extra call per untried beer)")
@@ -35,7 +40,13 @@ def main(argv=None):
         ap.error("give exactly one of an export file or --untappd-user")
     if args.check_stock and not args.store:
         ap.error("--check-stock needs --store")
-    checked = load_export(args.export) if args.export else fetch_user_beers(args.untappd_user)
+    if args.export:
+        checked = load_export(args.export)
+    elif Path(args.untappd_cache).exists() and not args.refresh:
+        checked = load_export(args.untappd_cache)
+    else:
+        checked = fetch_user_beers(args.untappd_user)
+        save_cache(args.untappd_cache, checked)
     products = (load_products_file(args.products_file) if args.products_file
                 else list(fetch_store_beers(args.store, args.sb_bin)))
     todo = unchecked(products, checked, args.threshold)

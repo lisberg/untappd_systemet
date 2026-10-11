@@ -60,6 +60,7 @@ def fetch_user_beers(username: str, client_id=None, client_secret=None, access_t
     and wrappers; unverified here as untappd.com is unreachable from the build sandbox.
     """
     import os
+    import urllib.error
     import urllib.parse
     import urllib.request
 
@@ -79,8 +80,13 @@ def fetch_user_beers(username: str, client_id=None, client_secret=None, access_t
             f"https://api.untappd.com/v4/user/beers/{urllib.parse.quote(username)}?{qs}",
             headers={"User-Agent": "beerbridge (untappd-systembolaget)"},
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.load(resp)["response"]["beers"]
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                remaining = resp.headers.get("X-Ratelimit-Remaining")
+                body = json.load(resp)["response"]["beers"]
+        except urllib.error.HTTPError as e:
+            hint = " (rate limit hit - keys get ~100 calls/hour; re-run later, use --untappd-cache)" if e.code == 429 else ""
+            raise RuntimeError(f"Untappd API returned HTTP {e.code}{hint}") from e
         items = body.get("items", [])
         for it in items:
             name = it["beer"]["beer_name"]
@@ -89,3 +95,11 @@ def fetch_user_beers(username: str, client_id=None, client_secret=None, access_t
         if not items:
             return beers
         offset += len(items)
+        if remaining is not None and int(remaining) <= 0:
+            raise RuntimeError(f"Untappd rate limit exhausted after {len(beers)} beers; try again in an hour")
+
+
+def save_cache(path, beers):
+    Path(path).write_text(
+        json.dumps([{"beer_name": b.name, "brewery_name": b.brewery} for b in beers], ensure_ascii=False),
+        encoding="utf-8")
