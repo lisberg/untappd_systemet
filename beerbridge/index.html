@@ -35,7 +35,7 @@ li{padding:10px 0;border-bottom:1px solid var(--line)}
     <label>Sort by<select id="sort">
       <option value="producer">Brewery</option><option value="name">Beer</option><option value="style">Style</option>
       <option value="price">Price</option><option value="abv">ABV</option>
-      <option value="score">Rating (Untappd)</option><option value="friends">Rating (friends)</option></select></label>
+      <option value="score">Rating (Untappd)</option></select></label>
     <label>Order<select id="dir"><option value="1">Ascending</option><option value="-1">Descending</option></select></label>
     <label>Group by<select id="group"><option value="">None</option><option value="style">Style</option>
       <option value="producer">Brewery</option><option value="price">Price band</option></select></label>
@@ -74,7 +74,7 @@ function view(){
      &&(amin===null||(b.abv||0)>=amin)&&(amax===null||(b.abv||0)<=amax)
      &&(rmin===null||(r.score||0)>=rmin)});
   const k=$('sort').value,d=+$('dir').value;
-  const key=b=>{const r=ratings[b.number]||{};return k==='score'?r.score:k==='friends'?r.friends:b[k]};
+  const key=b=>{const r=ratings[b.number]||{};return k==='score'?r.score:b[k]};
   v.sort((a,b)=>{const x=key(a),y=key(b);
     if(x==null||x==='')return y==null||y===''?0:1;if(y==null||y==='')return -1;  // missing values last
     return d*(typeof x==='number'?x-y:String(x).localeCompare(String(y),'sv'))});
@@ -91,7 +91,6 @@ function item(b){
   const rr=document.createElement('div');
   const chip=t=>{const c=document.createElement('span');c.className='chip';c.textContent=t;rr.append(c)};
   if(r&&r.found&&r.score)chip(`★ ${(+r.score).toFixed(2)} (${fmtN(r.count)})`);
-  if(r&&r.friends)chip(`👥 ${r.friends.toFixed(2)} (${r.friends_count})`);
   if(r&&r.found===false)chip('no Untappd match');
   if(rr.children.length)li.append(rr);
   if(b.closest){const c=document.createElement('div');c.className='mut';c.textContent=`closest check-in: ${b.closest} (${b.score})`;li.append(c)}
@@ -121,8 +120,7 @@ async function refreshRatings(){
     const s=[];if(rst.enabled===false)s.push('Ratings off (no Untappd credentials)');
     else{if(rst.pending)s.push(`fetching… ${rst.pending} queued`);
       if(rst.paused)s.push(rst.paused);
-      if(rst.remaining!=null)s.push(`${rst.remaining} API calls left this hour`);
-      if(!rst.friends_possible)s.push("friends' ratings need UNTAPPD_ACCESS_TOKEN")}
+      if(rst.remaining!=null)s.push(`${rst.remaining} API calls left this hour`)}
     $('rstat').textContent=s.join(' · ');render();
     if(rst.pending&&!rst.paused){clearTimeout(poll);poll=setTimeout(refreshRatings,4000)}}catch(e){$('rstat').textContent='Error: '+e.message}}
 $('getr').onclick=async()=>{

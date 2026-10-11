@@ -20,16 +20,13 @@ python3 -m beerbridge.web export.json --host 0.0.0.0 --port 8000  # open from yo
 ```
 Search for a store, tap it, then filter/sort the untried beers; "Only confirmed in stock" adds the per-beer stock
 check (slower). The chosen store is remembered in the browser, and each store's assortment is cached for an hour.
-Sort (brewery, beer, style, price, ABV, Untappd rating, friends' rating), group (style, brewery, price band) and
+Sort (brewery, beer, style, price, ABV, Untappd rating), group (style, brewery, price band) and
 filter (text, style, price, ABV, minimum rating); your choices are remembered in the browser.
 
 **Ratings:** "Fetch ratings for shown beers" looks each beer up on Untappd (search + info = ~2 API calls each) in a
 background worker and caches the result in `.ratings-cache.json` for 30 days. Untappd keys get ~100 calls/hour, so
 narrow the view (filters) first; when the budget runs out the queue pauses and resumes the next time you press the
 button. Ratings are off when there are no Untappd credentials or with `--no-ratings`.
-Friends' ratings are best-effort: they only appear if the `beer/info` response carries them, which needs a
-user-authorised `UNTAPPD_ACCESS_TOKEN` (client id/secret alone can't see friends). The response shape for that is
-unverified.
 
 Credentials stay on the server. There is no authentication, so only expose it on a network you trust.
 

@@ -1,4 +1,4 @@
-"""Untappd ratings (global, and friends' where the API exposes them) for Systembolaget products.
+"""Untappd ratings for Systembolaget products.
 
 Untappd allows ~100 calls/hour per key and a lookup costs ~2 (search + info), so ratings are fetched
 on demand by a background worker, throttled to the remaining budget, and cached on disk.
@@ -15,21 +15,8 @@ MIN_MATCH = 0.6
 RETRY_AFTER = 30 * 86400  # re-check a cached entry after 30 days
 
 
-def friends_rating(beer: dict):
-    """(mean, n) of friends' ratings if the beer/info response carries them (UNVERIFIED shape)."""
-    items = (beer.get("friends") or {}).get("items") or []
-    vals = []
-    for it in items:
-        v = it.get("rating_score")
-        if v is None and isinstance(it.get("checkin"), dict):
-            v = it["checkin"].get("rating_score")
-        if v:
-            vals.append(float(v))
-    return (round(sum(vals) / len(vals), 2), len(vals)) if vals else (None, 0)
-
-
 def lookup(client, product) -> dict:
-    """Find the product on Untappd and return {found, bid, score, count, friends, friends_count}."""
+    """Find the product on Untappd and return {found, bid, score, count}."""
     res = client.get("search/beer", q=f"{product.producer} {product.name}".strip(), limit=5)
     items = res.get("beers", {}).get("items", [])
     best, best_s = None, 0.0
@@ -43,9 +30,8 @@ def lookup(client, product) -> dict:
         return entry
     bid = best["beer"]["bid"]
     beer = client.get(f"beer/info/{bid}")["beer"]
-    fr, fn = friends_rating(beer)
     entry.update(found=True, bid=bid, name=beer.get("beer_name"), score=beer.get("rating_score"),
-                 count=beer.get("rating_count"), friends=fr, friends_count=fn)
+                 count=beer.get("rating_count"))
     return entry
 
 
@@ -108,5 +94,5 @@ class RatingStore:
             return {
                 "ratings": dict(self.cache),
                 "status": {"enabled": True, "pending": len(self.queue), "paused": self.paused,
-                           "remaining": self.client.remaining, "friends_possible": self.client.user_auth},
+                           "remaining": self.client.remaining},
             }

@@ -59,8 +59,7 @@ class RateLimited(RuntimeError):
 class UntappdClient:
     """Minimal Untappd v4 client. Tracks the remaining hourly call budget.
 
-    Credentials: UNTAPPD_ACCESS_TOKEN (user-authorised; needed for friend data), or
-    UNTAPPD_CLIENT_ID + UNTAPPD_CLIENT_SECRET. UNTAPPD_API_BASE overrides the host (for testing).
+    Credentials: UNTAPPD_CLIENT_ID + UNTAPPD_CLIENT_SECRET, or a user-authorised UNTAPPD_ACCESS_TOKEN. UNTAPPD_API_BASE overrides the host (for testing).
     """
 
     def __init__(self, client_id=None, client_secret=None, access_token=None):
@@ -75,7 +74,6 @@ class UntappdClient:
             self.auth = {"client_id": client_id, "client_secret": client_secret}
         else:
             raise RuntimeError("Set UNTAPPD_ACCESS_TOKEN or UNTAPPD_CLIENT_ID/UNTAPPD_CLIENT_SECRET")
-        self.user_auth = bool(access_token)
         self.base = os.environ.get("UNTAPPD_API_BASE", "https://api.untappd.com/v4")
         self.remaining = None  # calls left this hour, from X-Ratelimit-Remaining
 

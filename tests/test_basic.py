@@ -52,7 +52,6 @@ if __name__ == "__main__":
 class RatingTests(unittest.TestCase):
     class FakeClient:
         remaining = 50
-        user_auth = False
 
         def __init__(self):
             self.calls = []
@@ -63,15 +62,13 @@ class RatingTests(unittest.TestCase):
                 return {"beers": {"items": [
                     {"beer": {"bid": 1, "beer_name": "Fatamorgana Imperial IPA"}, "brewery": {"brewery_name": "Omnipollo"}},
                     {"beer": {"bid": 2, "beer_name": "Totally Else"}, "brewery": {"brewery_name": "Other"}}]}}
-            return {"beer": {"beer_name": "Fatamorgana", "rating_score": 4.1, "rating_count": 1234,
-                             "friends": {"items": [{"rating_score": 4.0}, {"rating_score": 5.0}, {"rating_score": 0}]}}}
+            return {"beer": {"beer_name": "Fatamorgana", "rating_score": 4.1, "rating_count": 1234}}
 
     def test_lookup_picks_matching_result_and_parses_ratings(self):
         from beerbridge.ratings import lookup
         c = self.FakeClient()
         r = lookup(c, P("Fatamorgana", "Omnipollo"))
         self.assertEqual((r["found"], r["bid"], r["score"], r["count"]), (True, 1, 4.1, 1234))
-        self.assertEqual((r["friends"], r["friends_count"]), (4.5, 2))
         self.assertEqual(c.calls, ["search/beer", "beer/info/1"])
 
     def test_lookup_not_found_costs_one_call(self):
